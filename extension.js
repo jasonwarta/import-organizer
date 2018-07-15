@@ -30,7 +30,7 @@ function activate(context) {
         let text = editor.document.getText(selection);
 
         let lines = text.split('\n');
-
+        
         const regex = /import ({?\s?[{\sA-Za-z\-\_\,]+\s?}?) from ('[@A-Za-z0-9\-\/\~\.]+')(;?)/;
 
         const splitLines = lines.filter(line => Boolean(line)).map(line => {
