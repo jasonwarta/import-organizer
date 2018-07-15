@@ -3,6 +3,13 @@ const vscode = require('vscode');
 const Selection = vscode.Selection;
 const Position = vscode.Position;
 
+const REGEX = [
+    /import ({?\s?[{\sA-Za-z\-\_\,]+\s?}?) from (["'][@A-Za-z0-9\-\/\~\.]+["'])(;?)/,
+    /import (["'][@A-Za-z0-9\-\/\~\.]+["'])()(;?)/,
+];
+
+const NO_IMPORTS = 'No valid import statements found';
+
 function traverseObject(obj, func) {
     for (let key in obj) {
         if (obj.hasOwnProperty(key))
@@ -18,6 +25,14 @@ function objectToArray(obj) {
     return arr;
 }
 
+function emptySelection(sel) {
+    return sel.start.line === sel.end.line && sel.start.character === sel.end.character;
+}
+
+function buildImportStatement(item) {
+    return item !== '' && `import ${item.import && item.import}${item.import && ' from '}${item.package}${item.semicolon ? ';' : ''}` || '';
+}
+
 function activate(context) {
     let disposable = vscode.commands.registerCommand('extension.sortImports', () => {
 
@@ -26,36 +41,78 @@ function activate(context) {
             return;
         }
 
+        const doc = editor.document;
         let selection = editor.selection;
-        let text = editor.document.getText(selection);
 
+        if(emptySelection(selection)) {
+            let startLine = 0;
+            let lastLine = 0;
+            let numOfLines = doc.lineCount;
+
+            for (let i = 0; i < numOfLines; i++) {
+                const line = doc.lineAt(i).text;
+                let matchedLine = false;
+                REGEX.forEach(re => {
+                    if (re.test(line)) {
+                        matchedLine = true;
+                        startLine = i;
+                    }
+                });
+                if (matchedLine) break;
+            }
+
+            for (let i = startLine; i < numOfLines; i++) {
+                const line = doc.lineAt(i).text;
+                REGEX.forEach(re => {
+                    if (re.test(line)) lastLine = i;
+                });
+            }
+
+            if(startLine === lastLine || startLine > lastLine) {
+                vscode.window.showInformationMessage(NO_IMPORTS);
+                return;
+            }
+
+            let startPos = doc.lineAt(startLine).range.start;
+            let endPos = doc.lineAt(lastLine).range.end;
+            selection = new Selection(startPos, endPos);
+        }
+
+        let text = doc.getText(selection);
         let lines = text.split('\n');
-        
-        const regex = /import ({?\s?[{\sA-Za-z\-\_\,]+\s?}?) from ('[@A-Za-z0-9\-\/\~\.]+')(;?)/;
 
         const splitLines = lines.filter(line => Boolean(line)).map(line => {
-            const match = regex.exec(line);
-            return {
-                import: match[1],
-                package: match[2],
-                semicolon: match[3] ? true : false,
-            };
+            let ret = null;
+            REGEX.forEach(re => {
+                if(re.test(line)) {
+                    const match = re.exec(line);
+                    ret = {
+                        import: match[2] && match[1] || '',
+                        package: match[2] || match[1],
+                        semicolon: match[3] ? true : false,
+                    }
+                }
+            });
+
+            return ret;
         });
 
         const groupedImports = {};
 
         splitLines.forEach(line => {
-            let importWords = line.package.split('/');
-            let key = importWords[0];
+            let packageName = line.package.split('/');
+            let key = packageName[0];
 
-            if (importWords.length > 2)
-                key = `${importWords[0]}/${importWords[1]}`;
+            if (packageName.length > 2)
+                key = `${packageName[0]}/${packageName[1]}`;
 
             if (!groupedImports[key])
                 groupedImports[key] = {};
             
             groupedImports[key][line.import] = line;
         });
+
+        console.log(groupedImports);
 
         const regroupedImports = {};
 
@@ -74,6 +131,8 @@ function activate(context) {
             }
         });
 
+        console.log(secondPassRegroupedImports);
+
         const finalPass = {};
         traverseObject(secondPassRegroupedImports, key => {
             secondPassRegroupedImports[key].sort((a, b) => a.package > b.package ? 1 : -1);
@@ -85,6 +144,8 @@ function activate(context) {
             }
         });
 
+        console.log(finalPass);
+
         const localImports = [];
         if(finalPass.localImports) {
             const keys = Object.keys(finalPass.localImports).sort();
@@ -94,17 +155,13 @@ function activate(context) {
             delete finalPass.localImports;
         }
 
-        console.log(finalPass.localImports);
-        console.log(localImports);
-
         const newLines = [];
 
         traverseObject(finalPass, key => {
-            newLines.push(finalPass[key].map(item => item !== '' && `import ${item.import} from ${item.package}${item.semicolon ? ';' : ''}` || '').join('\n'));
+            newLines.push(finalPass[key].map(item => buildImportStatement(item)).join('\n'));
         });
         
-        newLines.push(localImports.map(item => item !== '' && `import ${item.import} from ${item.package}${item.semicolon ? ';' : ''}` || '').join('\n'));
-        console.log(newLines);
+        newLines.push(localImports.map(item => buildImportStatement(item)).join('\n'));
 
         const e = vscode.window.activeTextEditor;
         let replacement;
