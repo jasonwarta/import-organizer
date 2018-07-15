@@ -20,7 +20,7 @@ This will remove any comments or non-import statments found in the import statem
 
 ## Notes
 
-In the current version, import statements must match one of the following:
+In the current version, import statements must match one of the following regexes:
 
 ```js
 /import ({?\s?[{\sA-Za-z\-\_\,]+\s?}?) from (["'][@A-Za-z0-9\-\/\~\.]+["'])(;?)/
