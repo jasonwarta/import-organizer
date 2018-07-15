@@ -3,7 +3,7 @@
     "displayName": "import-organizer",
     "description": "Organize js import statements by package",
     "repository": "https://github.com/jasonwarta/import-organizer",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "publisher": "jasonwarta",
     "engines": {
         "vscode": "^1.25.0"
